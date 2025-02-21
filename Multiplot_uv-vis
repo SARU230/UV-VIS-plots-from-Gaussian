@@ -1,0 +1,97 @@
+import re
+import numpy as np
+import matplotlib.pyplot as plt
+
+def extract_singlet_excitations(logfile):
+    """
+    Extract singlet excitation energies and oscillator strengths from a Gaussian TDDFT log file.
+
+    Parameters:
+    logfile (str): Path to the log file.
+
+    Returns:
+    excitations (list of tuples): Each tuple contains (energy in nm, oscillator strength) for singlet excitations.
+    """
+    excitations = []
+
+    with open(logfile, 'r') as file:
+        lines = file.readlines()
+
+        # Regex to find excitation energy and oscillator strength in Gaussian output
+        energy_pattern = re.compile(r"Excited State\s+\d+:\s+Singlet.*?([\d\.]+)\s+eV.*?f=([\d\.]+)")
+
+        for i, line in enumerate(lines):
+            # Search for excitation energy and oscillator strength on the same line
+            match = energy_pattern.search(line)
+            if match:
+                energy_ev = float(match.group(1))  # Excitation energy in eV
+                osc_strength = float(match.group(2))  # Oscillator strength (f-value)
+
+                # Convert energy from eV to wavelength in nm
+                wavelength_nm = 1240.0 / energy_ev
+
+                excitations.append((wavelength_nm, osc_strength))
+
+    return excitations
+
+
+def gaussian_broadening(wavelength, osc_strength, x, width=20):
+    """
+    Apply Gaussian broadening to an excitation in wavelength space.
+
+    Parameters:
+    wavelength (float): Excitation wavelength in nm.
+    osc_strength (float): Oscillator strength.
+    x (numpy array): Array of wavelength values over which the spectrum is calculated.
+    width (float): Width of the Gaussian (broadening factor, in nm).
+
+    Returns:
+    numpy array: The broadened Gaussian contribution to the spectrum.
+    """
+    return osc_strength * np.exp(-(x - wavelength) ** 2 / (2 * width ** 2))
+
+
+def plot_uv_vis_spectrum(excitations_list, labels, width=20, xrange=(200, 800), num_points=1000):
+    """
+    Plot the UV-Vis absorption spectrum for multiple files using Gaussian broadening.
+
+    Parameters:
+    excitations_list (list of lists): List of excitations for each file.
+    labels (list of str): Labels for each spectrum.
+    width (float): Broadening factor for Gaussian peaks (in nm).
+    xrange (tuple): Wavelength range (in nm) for the spectrum.
+    num_points (int): Number of points in the spectrum.
+    """
+    # Create wavelength grid
+    x = np.linspace(xrange[0], xrange[1], num_points)
+  
+    plt.figure(figsize=(8, 6))
+
+    # Plot spectra for each file
+    for excitations, label in zip(excitations_list, labels):
+        spectrum = np.zeros_like(x)
+
+        # Sum Gaussian broadened contributions from all excitations
+        for wavelength, osc_strength in excitations:
+            spectrum += gaussian_broadening(wavelength, osc_strength, x, width=width)
+
+        plt.plot(x, spectrum, label=label)
+
+    # Customize plot
+    plt.xlabel('Wavelength (nm)')
+    plt.ylabel('Oscillator strength (arb. units)')
+    plt.title('Emission Spectra')
+    plt.grid(True)
+    plt.legend()  # Add legend to distinguish spectra
+    plt.show()
+
+
+# List of log files and corresponding labels
+logfiles = ['6BT_F3_TD.log', '6BT_F5_TD.log', '5BT_F5_TD.log']
+labels = ['6BT_F3', '6BT_F5', '6BT_H5']
+
+# Extract excitations for each file
+excitations_list = [extract_singlet_excitations(logfile) for logfile in logfiles]
+
+# Plot all spectra in one figure
+plot_uv_vis_spectrum(excitations_list, labels, width=20, xrange=(250, 750), num_points=2000)
